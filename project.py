@@ -67,14 +67,14 @@ fig.savefig('Correlation_matrix.png', dpi=200)
 # Do some manual removal of columns if we want to
 
 # %%
+# Binary label ----------------------------------------------------------------
 X = df.drop('event', axis=1)
 y = df.event
 # Encode y like this
-np.sort(df.event.unique())
-y = y.astype('category').cat.codes
-# y = [0 if i == 'nonevent' else 1 for i in y]
-# y = np.array(y)
-y
+# np.sort(df.event.unique())
+# y = y.astype('category').cat.codes
+y = [0 if i == 'nonevent' else 1 for i in y]
+y = np.array(y)
 
 # %%
 # Split data into train and test set
@@ -86,7 +86,7 @@ scale = StandardScaler()
 X_train_scaled = scale.fit_transform(X_train)
 X_test_scaled = scale.transform(X_test)
 
-#
+# %%
 pca = PCA()
 pca.fit(X_train_scaled)
 
@@ -97,39 +97,6 @@ ax.set_title('Cummulative explained variance', size=22, weight='bold')
 ax.set_xlabel('Number of PCs')
 ax.set_ylabel('Total variance in data')
 # fig.savefig('PCA.png', dpi=200)
-
-
-# %%
-# K-fold on train data
-# K = 5    # number of folds/rounds/splits
-# kf = KFold(n_splits=K, shuffle=False)
-# kf = kf.split(X_train)
-# kf = list(kf)
-#
-# # %%
-# test_acc_cv = np.zeros([5, 3])
-#
-#
-# def train_model(model_instance):
-#     model_instance = model_instance.fit(X_train_scaled[train_indices, :],
-#                                         y_train[train_indices])
-#     y_pred_val = model_instance.predict(X_train_scaled[test_indices, :])
-#     return accuracy_score(y_train[test_indices], y_pred_val)
-#
-#
-# # %%
-# for i, (train_indices, test_indices) in enumerate(kf):
-#     kneighbor = KNeighborsClassifier(n_neighbors=5, metric='euclidean')
-#     test_acc_cv[i, 0] = train_model(kneighbor)
-#
-#     rf = RandomForestClassifier()
-#     test_acc_cv[i, 1] = train_model(rf)
-#
-#     logis = LogisticRegression(max_iter=1000)
-#     test_acc_cv[i, 2] = train_model(logis)
-#
-# acc_val = np.mean(test_acc_cv, axis=0)   # compute the mean of validation acc
-# acc_val
 
 # %%
 # Better way by using grid search to find best parameters
@@ -173,13 +140,11 @@ importances = rf.best_estimator_.feature_importances_
 indices = np.argsort(importances)
 ax.barh([features[i] for i in indices], importances[indices])
 ax.set_title('Feature Importance', weight='bold', size=22)
-ax.set_xlabel('Relative Importance')
-# fig.savefig('Feature_importance_randomforest_multiclass.png', dpi=200)
-
+ax.set_xlabel('Relative Importance binary')
+# fig.savefig('Feature_importance_randomforest_binary.png', dpi=200)
 
 # %%
 tuned_parameters = [{'n_neighbors': [5, 10, 15]}]
-
 kneighbor = GridSearchCV(KNeighborsClassifier(), tuned_parameters)
 kneighbor.fit(X_train_scaled, y_train)
 print('Best parameters found on cross-validation')
@@ -208,7 +173,6 @@ ax.grid(axis='y', which='both')
 # %%
 # confusion matrix using random forest
 y_pred = rf.best_estimator_.predict(X_test_scaled)
-confusion_matrix(y_test, y_pred)
 fig, ax = plt.subplots(figsize=(15, 9))
 sns.heatmap(confusion_matrix(y_test, y_pred),
             # xticklabels=['nonevent', 'event'],
@@ -221,7 +185,128 @@ ax.set_xlabel('Predicted label')
 ax.set_ylabel('True label')
 ax.set_title(f'Overall Accuracy {accuracy_score(y_test, y_pred):.2f}',
              weight='bold', size=22)
-# fig.savefig('confusion_matrix_binary.png', dpi=200)
+fig.savefig('confusion_matrix_binary.png', dpi=200)
+
+
+# %%
+# Multiclass label ------------------------------------------------------------
+X = df.drop('event', axis=1)
+y = df.event
+# Encode y like this
+np.sort(df.event.unique())
+y = y.astype('category').cat.codes
+
+
+# %%
+# Split data into train and test set
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=7)
+
+# %%
+# Scale data first
+scale = StandardScaler()
+X_train_scaled = scale.fit_transform(X_train)
+X_test_scaled = scale.transform(X_test)
+
+# %%
+pca = PCA()
+pca.fit(X_train_scaled)
+
+# %%
+fig, ax = plt.subplots(figsize=(9, 6))
+ax.plot(np.cumsum(pca.explained_variance_ratio_))
+ax.set_title('Cummulative explained variance', size=22, weight='bold')
+ax.set_xlabel('Number of PCs')
+ax.set_ylabel('Total variance in data')
+# fig.savefig('PCA.png', dpi=200)
+
+# %%
+# Better way by using grid search to find best parameters
+# across default cross validation with k=5
+tuned_parameters = [{'kernel': ['rbf'], 'gamma': [1e-3, 1e-4],
+                     'C': [1, 10, 100, 50]},
+                    {'kernel': ['linear'], 'C': [1, 10, 100, 50]}]
+
+svm = GridSearchCV(SVC(class_weight='balanced'), tuned_parameters)
+svm.fit(X_train_scaled, y_train)
+print('Best parameters found on cross-validation')
+print(svm.best_params_)
+print('Accuracy SVM')
+print(f"Mean: {svm.cv_results_['mean_test_score']}, std: {svm.cv_results_['std_test_score']}")
+
+# %%
+tuned_parameters = [{'C': [1, 10, 100]}, {'penalty': ['none']}]
+
+logis = GridSearchCV(LogisticRegression(max_iter=1000), tuned_parameters)
+logis.fit(X_train_scaled, y_train)
+print('Best parameters found on cross-validation')
+print(logis.best_params_)
+print('Accuracy Logistic regression')
+print(f"Mean: {logis.cv_results_['mean_test_score']}, std: {logis.cv_results_['std_test_score']}")
+
+# %%
+tuned_parameters = [{'n_estimators': [10, 50, 100],
+                     'max_depth': [5, 10, 20, None]}]
+
+rf = GridSearchCV(RandomForestClassifier(), tuned_parameters)
+rf.fit(X_train_scaled, y_train)
+print('Best parameters found on cross-validation')
+print(rf.best_params_)
+print('Accuracy Random Forest')
+print(f"Mean: {rf.cv_results_['mean_test_score']}, std: {rf.cv_results_['std_test_score']}")
+
+# %%
+fig, ax = plt.subplots(figsize=(12, 9))
+features = df.columns[:-1]
+importances = rf.best_estimator_.feature_importances_
+indices = np.argsort(importances)
+ax.barh([features[i] for i in indices], importances[indices])
+ax.set_title('Feature Importance', weight='bold', size=22)
+ax.set_xlabel('Relative Importance multiclass')
+# fig.savefig('Feature_importance_randomforest_multiclass.png', dpi=200)
+
+# %%
+tuned_parameters = [{'n_neighbors': [5, 10, 15]}]
+kneighbor = GridSearchCV(KNeighborsClassifier(), tuned_parameters)
+kneighbor.fit(X_train_scaled, y_train)
+print('Best parameters found on cross-validation')
+print(kneighbor.best_params_)
+print('Accuracy K-neighbors')
+print(
+    f"Mean: {kneighbor.cv_results_['mean_test_score']}, std: {kneighbor.cv_results_['std_test_score']}")
+kneighbor.best_score_
+kneighbor.cv_results_['std_test_score'][np.argmax(kneighbor.cv_results_['mean_test_score'])]
+
+# %%
+acc = [i.best_score_ for i in [kneighbor, rf, svm, logis]]
+std = [i.cv_results_['std_test_score'][np.argmax(i.cv_results_['mean_test_score'])]
+       for i in [kneighbor, rf, svm, logis]]
+models = ['K-nearest neighbor', 'Random Forest',
+          'Supported vector machine', 'Logistic Regression']
+fig, ax = plt.subplots(figsize=(12, 6))
+ax.bar(models, acc, width=0.4, yerr=std, capsize=10)
+ax.set_xlabel('Models')
+ax.set_ylabel('Accuracy')
+ax.set_title('Model comparison binary', weight='bold', size=22)
+ax.yaxis.set_minor_locator(MultipleLocator(0.05))
+ax.grid(axis='y', which='both')
+# fig.savefig('model_comparison_binary.png', dpi=200)
+
+# %%
+# confusion matrix using random forest
+y_pred = rf.best_estimator_.predict(X_test_scaled)
+fig, ax = plt.subplots(figsize=(15, 9))
+sns.heatmap(confusion_matrix(y_test, y_pred),
+            # xticklabels=['nonevent', 'event'],
+            # yticklabels=['nonevent', 'event'],
+            xticklabels=np.sort(df.event.unique()),
+            yticklabels=np.sort(df.event.unique()),
+            annot=True, ax=ax, cbar_kws={'label': 'Number of data points'},
+            vmax=100)
+ax.set_xlabel('Predicted label')
+ax.set_ylabel('True label')
+ax.set_title(f'Overall Accuracy {accuracy_score(y_test, y_pred):.2f}',
+             weight='bold', size=22)
+fig.savefig('confusion_matrix_multiclass.png', dpi=200)
 
 # %%
 # ALL data
@@ -241,8 +326,9 @@ p_event_given_nonevent = cf_all[1, 0]/(np.sum(cf_all[:, 0])
 p_event_given_event=cf_all[1, 1]/(np.sum(cf_all[:, 1])
 
 # %%
-test_hidden=pd.read_csv('npf_test_hidden.csv')
+# Predict on test-hiddden -----------------------------------------------------
 test_hidden['date']=pd.to_datetime(test_hidden.date)
+
 # Make season from date
 test_hidden['spring']=[1 if month in [4, 5] else 0 for month in test_hidden.date.dt.month]
 test_hidden['summer']=[1 if month in [6, 7, 8, 9] else 0 for month in test_hidden.date.dt.month]
@@ -283,7 +369,6 @@ y=df_new.event
 np.sort(df_new.event.unique())
 y=y.astype('category').cat.codes
 
-y
 # %%
 # Split data into train and test set
 X_train, X_test, y_train, y_test=train_test_split(X, y, random_state=7)
